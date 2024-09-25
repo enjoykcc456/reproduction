@@ -1,31 +1,78 @@
-import { Entity, MikroORM, PrimaryKey, Property } from '@mikro-orm/sqlite';
+import {
+  Collection,
+  Entity,
+  Enum,
+  ManyToOne,
+  MikroORM,
+  OneToMany,
+  PrimaryKey,
+  Property,
+} from "@mikro-orm/sqlite";
+import { v4 as uuid } from "uuid";
 
-@Entity()
-class User {
+export enum VenueType {
+  Physical = "Physical",
+  Virtual = "Virtual",
+}
 
-  @PrimaryKey()
-  id!: number;
+@Entity({ tableName: "appointment-sti" })
+export class AppointmentStiEntity {
+  @PrimaryKey({ unique: true })
+  id: string = uuid();
+
+  @OneToMany(() => VenueStiEntity, (venue) => venue.appointment)
+  venues = new Collection<VenueStiEntity>(this);
+}
+
+@Entity({
+  tableName: "venue-sti",
+  discriminatorColumn: "type",
+  discriminatorValue: "Venue",
+})
+export abstract class VenueStiEntity {
+  @PrimaryKey({ unique: true })
+  id: string = uuid();
 
   @Property()
-  name: string;
+  name!: string;
 
-  @Property({ unique: true })
-  email: string;
+  @Enum(() => VenueType)
+  type!: VenueType; // discriminator for polymorphic behavior
 
-  constructor(name: string, email: string) {
-    this.name = name;
-    this.email = email;
-  }
+  @ManyToOne(() => AppointmentStiEntity)
+  appointment!: AppointmentStiEntity;
+}
 
+@Entity({ discriminatorValue: VenueType.Physical })
+export class PhysicalVenueStiEntity extends VenueStiEntity {
+  @Property()
+  street!: string;
+
+  @Property()
+  block!: string;
+}
+
+@Entity({ discriminatorValue: VenueType.Virtual })
+export class VirtualVenueStiEntity extends VenueStiEntity {
+  @Property()
+  meetingLink!: string;
+
+  @Property()
+  passcode!: string;
 }
 
 let orm: MikroORM;
 
 beforeAll(async () => {
   orm = await MikroORM.init({
-    dbName: ':memory:',
-    entities: [User],
-    debug: ['query', 'query-params'],
+    dbName: ":memory:",
+    entities: [
+      AppointmentStiEntity,
+      VenueStiEntity,
+      PhysicalVenueStiEntity,
+      VirtualVenueStiEntity,
+    ],
+    debug: ["query", "query-params"],
     allowGlobalContext: true, // only for testing
   });
   await orm.schema.refreshDatabase();
@@ -35,17 +82,36 @@ afterAll(async () => {
   await orm.close(true);
 });
 
-test('basic CRUD example', async () => {
-  orm.em.create(User, { name: 'Foo', email: 'foo' });
-  await orm.em.flush();
-  orm.em.clear();
+test("basic CRUD example", async () => {
+  const appointment = new AppointmentStiEntity();
 
-  const user = await orm.em.findOneOrFail(User, { email: 'foo' });
-  expect(user.name).toBe('Foo');
-  user.name = 'Bar';
-  orm.em.remove(user);
-  await orm.em.flush();
+  const physicalVenue = new PhysicalVenueStiEntity();
+  physicalVenue.name = "Venue 1";
+  physicalVenue.street = "Street 1";
+  physicalVenue.block = "Block 1";
+  physicalVenue.appointment = appointment;
 
-  const count = await orm.em.count(User, { email: 'foo' });
-  expect(count).toBe(0);
+  const virtualVenue = new VirtualVenueStiEntity();
+  virtualVenue.name = "Venue 2";
+  virtualVenue.meetingLink = "Link 1";
+  virtualVenue.passcode = "Passcode 1";
+  virtualVenue.appointment = appointment;
+
+  await orm.em.persistAndFlush([virtualVenue, physicalVenue]);
+
+  const venues = await orm.em.getRepository(VenueStiEntity).findAll();
+  console.log({ venues });
+
+  // make updates on the managed venue entities
+  for (const venue of venues) {
+    if (venue instanceof PhysicalVenueStiEntity) {
+      venue.block = `Block ${Math.random()}`;
+    }
+
+    if (venue instanceof VirtualVenueStiEntity) {
+      venue.passcode = `Passcode ${Math.random()}`;
+    }
+  }
+
+  await orm.em.flush();
 });
