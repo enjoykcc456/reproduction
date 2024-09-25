@@ -29,7 +29,7 @@ export class AppointmentStiEntity {
   discriminatorColumn: "type",
   discriminatorValue: "Venue",
 })
-export abstract class VenueStiEntity {
+export class VenueStiEntity {
   @PrimaryKey({ unique: true })
   id: string = uuid();
 
