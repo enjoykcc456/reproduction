@@ -97,9 +97,12 @@ test("basic CRUD example", async () => {
   virtualVenue.passcode = "Passcode 1";
   virtualVenue.appointment = appointment;
 
-  await orm.em.persistAndFlush([virtualVenue, physicalVenue]);
+  const repository = orm.em.getRepository(VenueStiEntity);
+  const em = repository.getEntityManager();
 
-  const venues = await orm.em.getRepository(VenueStiEntity).findAll();
+  await em.persistAndFlush([virtualVenue, physicalVenue]);
+
+  const venues = await repository.findAll();
   console.log({ venues });
 
   // make updates on the managed venue entities
@@ -113,5 +116,5 @@ test("basic CRUD example", async () => {
     }
   }
 
-  await orm.em.flush();
+  await em.flush();
 });
